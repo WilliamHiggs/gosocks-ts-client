@@ -1,4 +1,4 @@
-import { Gosocks } from '../src/index';
+//import { Gosocks } from '../src/index';
 
 it.todo("Connect tests with the live Gosocks server")
 /*
