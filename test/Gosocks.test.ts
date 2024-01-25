@@ -1,6 +1,5 @@
-//import { Gosocks } from '../src/index';
+import { Gosocks, GosocksEvent } from '../src/index';
 
-it.todo("Connect tests with the live Gosocks server")
 /*
 describe('Gosocks', () => {
   let gosocks: Gosocks;
@@ -13,105 +12,111 @@ describe('Gosocks', () => {
     gosocks.disconnect();
   });
 
-  it('should initialize with a WebSocket connection', () => {
-    const auth_key = 'test_auth_key';
-    const onOpen = jest.fn();
-    const onClose = jest.fn();
-    const onError = jest.fn();
-    const onEvent = jest.fn();
+  it('should initialize with default values', () => {
+    expect(gosocks.channels.size).toBe(0);
+    //expect(gosocks.ws).toBeNull();
+  });
 
-    gosocks.init({ auth_key, onOpen, onClose, onError, onEvent });
+  it('should subscribe to a public channel', () => {
+    const channelName = 'test-channel';
+    const channel = gosocks.subscribe({ channelName });
+
+    expect(gosocks.channels.size).toBe(1);
+    expect(gosocks.channels.get(channelName)).toBe(channel);
+    expect(channel.private).toBe(false);
+  });
+
+  it('should subscribe to a private channel', () => {
+    const channelName = 'private-channel';
+    const channel = gosocks.subscribe({ channelName });
+
+    expect(gosocks.channels.size).toBe(2);
+    expect(gosocks.channels.get(channelName)).toBe(channel);
+    expect(channel.private).toBe(true);
+  });
+
+  it('should unsubscribe from a channel', async () => {
+    const channelName = 'test-channel';
+    gosocks.subscribe({ channelName });
+
+    await gosocks.unsubscribe({ channelName });
+
+    expect(gosocks.channels.size).toBe(0);
+    expect(gosocks.channels.get(channelName)).toBeUndefined();
+  });
+
+  it('should connect to the WebSocket server', () => {
+    gosocks.init({ auth_key: 'test-auth-key' });
 
     expect(gosocks.getState()).toBe('CONNECTING');
   });
 
-  it('should subscribe to a channel', () => {
-    const channelName = 'test_channel';
-    const onEvent = jest.fn();
-    const onJoin = jest.fn();
-    const onLeave = jest.fn();
-    const onMemberAdded = jest.fn();
-    const onMemberRemoved = jest.fn();
+  it('should send a message to a channel', async () => {
+    const channelName = 'test-channel';
+    const data = { message: 'Hello, world!' };
+    const channel = gosocks.subscribe({ channelName });
 
-    const channel = gosocks.subscribe({
-      channelName,
-      onEvent,
-      onJoin,
-      onLeave,
-      onMemberAdded,
-      onMemberRemoved,
-    });
+    const result = await gosocks.sendToChannel({ channelName, data });
 
-    expect(channel.channelName).toBe(channelName);
-    expect(gosocks.channels.get(channelName)).toBe(channel);
+    expect(result).toBeUndefined();
+    expect(channel.onEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        channelName,
+        eventName: 'message',
+        data,
+      })
+    );
   });
 
-  it('should unsubscribe from a channel', () => {
-    const channelName = 'test_channel';
-    const onEvent = jest.fn();
-    const onJoin = jest.fn();
-    const onLeave = jest.fn();
-    const onMemberAdded = jest.fn();
-    const onMemberRemoved = jest.fn();
+  it('should send a message to all channels', () => {
+    const data = { message: 'Hello, world!' };
+    const channel1 = gosocks.subscribe({ channelName: 'channel1' });
+    const channel2 = gosocks.subscribe({ channelName: 'channel2' });
 
-    gosocks.subscribe({
-      channelName,
-      onEvent,
-      onJoin,
-      onLeave,
-      onMemberAdded,
-      onMemberRemoved,
-    });
+    gosocks.sendToAllChannels(data);
 
-    const channel = gosocks.unsubscribe({ channelName });
-
-    expect(channel?.channelName).toBe(channelName);
-    expect(gosocks.channels.get(channelName)).toBeUndefined();
+    expect(channel1.onEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventName: 'message',
+        data,
+      })
+    );
+    expect(channel2.onEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        eventName: 'message',
+        data,
+      })
+    );
   });
 
-  it('should connect to all subscribed channels', () => {
-    const channelName1 = 'test_channel_1';
-    const channelName2 = 'test_channel_2';
-    const onEvent = jest.fn();
-    const onJoin = jest.fn();
-    const onLeave = jest.fn();
-    const onMemberAdded = jest.fn();
-    const onMemberRemoved = jest.fn();
-
-    gosocks.subscribe({
-      channelName: channelName1,
-      onEvent,
-      onJoin,
-      onLeave,
-      onMemberAdded,
-      onMemberRemoved,
-    });
-
-    gosocks.subscribe({
-      channelName: channelName2,
-      onEvent,
-      onJoin,
-      onLeave,
-      onMemberAdded,
-      onMemberRemoved,
-    });
-
-    gosocks.connect();
-
-    expect(gosocks.getState()).toBe('OPEN');
-  });
-
-  it('should disconnect from WebSocket', () => {
-    const auth_key = 'test_auth_key';
-    const onOpen = jest.fn();
-    const onClose = jest.fn();
-    const onError = jest.fn();
-    const onEvent = jest.fn();
-
-    gosocks.init({ auth_key, onOpen, onClose, onError, onEvent });
+  it('should disconnect from the WebSocket server', () => {
+    gosocks.init({ auth_key: 'test-auth-key' });
     gosocks.disconnect();
 
     expect(gosocks.getState()).toBe('CLOSED');
+  });
+
+  describe('splitWebsocketMessages', () => {
+    it('should split the message on every instance of "}+{" and preserve the braces', () => {
+      const message = '{"key1":"value1"}+{"key2":"value2"}+{"key3":"value3"}';
+
+      const result = gosocks.splitWebsocketMessages(message);
+
+      expect(result).toEqual([
+        '{"key1":"value1"}',
+        '{"key2":"value2"}',
+        '{"key3":"value3"}',
+      ]);
+    });
+
+    it('should return the original message if it does not contain "}+{"', () => {
+      const gosocks = gosocks.init({ auth_key: 'test-auth-key' });
+      const message = '{"key1":"value1"}';
+
+      const result = gosocks.splitWebsocketMessages(message);
+
+      expect(result).toEqual([message]);
+    });
   });
 });
 */
